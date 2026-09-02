@@ -59,17 +59,22 @@ export default function ScadenzePage() {
     setError("");
     try {
       const due = new Date(dueDate).getTime();
-      await addDoc(collection(db, "deadlines"), {
+      // Firestore non accetta undefined: includi description solo se valorizzata
+      const payload: Record<string, unknown> = {
         familyId: profile.familyId,
         title: title.trim(),
-        description: description.trim() || undefined,
         dueDate: due,
         remindDays: days,
         reminded: false,
         authorId: user.uid,
         authorName: profile.displayName || "Anonimo",
         createdAt: Date.now(),
-      });
+      };
+      const desc = description.trim();
+      if (desc) {
+        payload.description = desc;
+      }
+      await addDoc(collection(db, "deadlines"), payload);
       setTitle("");
       setDescription("");
       setDueDate("");
@@ -122,7 +127,12 @@ export default function ScadenzePage() {
         )}
         {deadlines.map((d) => {
           const isPast = d.dueDate < Date.now();
-          const days = d.remindDays != null ? d.remindDays : (d as any).remindBefore ? Math.round((d as any).remindBefore / 1440) : 1;
+          const days =
+            d.remindDays != null
+              ? d.remindDays
+              : (d as any).remindBefore
+              ? Math.round((d as any).remindBefore / 1440)
+              : 1;
           return (
             <div
               key={d.id}
