@@ -13,7 +13,8 @@ async function compressImageIfNeeded(
   }
 
   try {
-    const sharp = (await import("sharp")).default;
+    const sharpMod = await import("sharp");
+    const sharp = sharpMod.default;
     const pipeline = sharp(input).rotate();
 
     if (mime === "image/png") {
@@ -52,11 +53,12 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuf = await file.arrayBuffer();
-    let data = Buffer.from(new Uint8Array(arrayBuf));
+    const original = Buffer.from(new Uint8Array(arrayBuf));
     let mime = file.type || "application/octet-stream";
 
-    const compressed = await compressImageIfNeeded(data, mime);
-    data = compressed.data;
+    const compressed = await compressImageIfNeeded(original, mime);
+    // Usa una variabile nuova per evitare mismatch Buffer<ArrayBuffer> vs Buffer<ArrayBufferLike>
+    const payload: Buffer = Buffer.from(compressed.data);
     mime = compressed.mime;
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._\- \u00C0-\u024F]/g, "_");
@@ -78,21 +80,22 @@ export async function POST(req: NextRequest) {
       console.warn("createDirectory", e);
     }
 
-    await client.putFileContents(remotePath, data, {
+    await client.putFileContents(remotePath, payload, {
       overwrite: true,
-      contentLength: data.length,
+      contentLength: payload.length,
     });
 
     return NextResponse.json({
       ok: true,
       path: remotePath,
       name: safeName,
-      size: data.length,
+      size: payload.length,
       originalSize: arrayBuf.byteLength,
       mime,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Upload fallito";
     console.error("Upload error", e);
-    return NextResponse.json({ error: e.message || "Upload fallito" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
