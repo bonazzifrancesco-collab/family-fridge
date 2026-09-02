@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
 import { Deadline } from "@/lib/types";
@@ -25,43 +25,74 @@ export default function ScadenzePage() {
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [remindBefore, setRemindBefore] = useState(1440);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!profile?.familyId) return;
+
+    // Solo where → niente indice composito richiesto
     const q = query(
       collection(db, "deadlines"),
-      where("familyId", "==", profile.familyId),
-      orderBy("dueDate", "asc")
+      where("familyId", "==", profile.familyId)
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Deadline));
-      setDeadlines(data);
-    });
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Deadline))
+          .sort((a, b) => (a.dueDate || 0) - (b.dueDate || 0));
+        setDeadlines(data);
+        setError("");
+      },
+      (err) => {
+        console.error("Deadlines listener error:", err);
+        setError(`Errore lettura scadenze: ${err.message}`);
+      }
+    );
     return () => unsub();
   }, [profile?.familyId]);
 
   const addDeadline = async () => {
-    if (!title.trim() || !dueDate || !profile?.familyId || !user) return;
-    const due = new Date(dueDate).getTime();
-    await addDoc(collection(db, "deadlines"), {
-      familyId: profile.familyId,
-      title: title.trim(),
-      description: description.trim() || undefined,
-      dueDate: due,
-      remindBefore,
-      reminded: false,
-      authorId: user.uid,
-      authorName: profile.displayName || "Anonimo",
-      createdAt: Date.now(),
-    });
-    setTitle("");
-    setDescription("");
-    setDueDate("");
-    setShowForm(false);
+    if (!title.trim() || !dueDate || !profile?.familyId || !user) {
+      setError("Compila titolo e data, oppure ricarica (manca famiglia).");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const due = new Date(dueDate).getTime();
+      await addDoc(collection(db, "deadlines"), {
+        familyId: profile.familyId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        dueDate: due,
+        remindBefore,
+        reminded: false,
+        authorId: user.uid,
+        authorName: profile.displayName || "Anonimo",
+        createdAt: Date.now(),
+      });
+      setTitle("");
+      setDescription("");
+      setDueDate("");
+      setShowForm(false);
+    } catch (err: any) {
+      console.error("Add deadline error:", err);
+      setError(`Errore salvataggio: ${err.code || ""} ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async (id: string) => {
-    await deleteDoc(doc(db, "deadlines", id));
+    try {
+      await deleteDoc(doc(db, "deadlines", id));
+    } catch (err: any) {
+      console.error("Delete deadline error:", err);
+      setError(`Errore cancellazione: ${err.message}`);
+    }
   };
 
   return (
@@ -69,15 +100,24 @@ export default function ScadenzePage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-handwritten text-warm-wood">Scadenze</h1>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            setError("");
+            setShowForm(true);
+          }}
           className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-warm-orange text-white shadow-md hover:bg-orange-600"
         >
           <Plus className="w-5 h-5" /> Nuova scadenza
         </button>
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm whitespace-pre-wrap">
+          {error}
+        </div>
+      )}
+
       <div className="space-y-3">
-        {deadlines.length === 0 && (
+        {deadlines.length === 0 && !error && (
           <p className="text-center text-amber-800/50 font-handwritten text-xl py-12">
             Nessuna scadenza. Aggiungine una!
           </p>
@@ -107,7 +147,10 @@ export default function ScadenzePage() {
                   </span>
                 </p>
                 <p className="text-xs text-amber-700/60 mt-1">
-                  Promemoria: {remindOptions.find((o) => o.value === d.remindBefore)?.label || `${d.remindBefore} min`} · di {d.authorName}
+                  Promemoria:{" "}
+                  {remindOptions.find((o) => o.value === d.remindBefore)?.label ||
+                    `${d.remindBefore} min`}{" "}
+                  · di {d.authorName}
                 </p>
               </div>
               <button
@@ -124,10 +167,16 @@ export default function ScadenzePage() {
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
-            <button onClick={() => setShowForm(false)} className="absolute top-3 right-3 p-1 rounded-full hover:bg-cream-100">
+            <button
+              onClick={() => setShowForm(false)}
+              className="absolute top-3 right-3 p-1 rounded-full hover:bg-cream-100"
+            >
               <X className="w-5 h-5" />
             </button>
             <h2 className="text-xl font-handwritten text-warm-wood mb-4">Nuova scadenza</h2>
+            {error && (
+              <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+            )}
             <div className="space-y-3">
               <input
                 type="text"
@@ -162,10 +211,10 @@ export default function ScadenzePage() {
               </select>
               <button
                 onClick={addDeadline}
-                disabled={!title.trim() || !dueDate}
+                disabled={!title.trim() || !dueDate || busy}
                 className="w-full py-3 rounded-xl bg-warm-orange text-white font-medium disabled:opacity-50"
               >
-                Salva scadenza
+                {busy ? "Salvataggio..." : "Salva scadenza"}
               </button>
             </div>
           </div>
