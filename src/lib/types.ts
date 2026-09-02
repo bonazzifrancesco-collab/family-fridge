@@ -12,7 +12,7 @@ export type Family = {
   name: string;
   inviteCode: string;
   createdBy: string;
-  members: string[]; // uids
+  members: string[];
   createdAt: number;
 };
 
@@ -23,7 +23,7 @@ export type PostItNote = {
   color: "yellow" | "pink" | "blue" | "green" | "orange";
   authorId: string;
   authorName: string;
-  rotation: number; // degrees for visual tilt
+  rotation: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -33,8 +33,9 @@ export type Deadline = {
   familyId: string;
   title: string;
   description?: string;
-  dueDate: number; // timestamp
-  remindBefore: number; // minutes before due
+  dueDate: number;
+  /** Giorni prima della scadenza per il promemoria email */
+  remindDays: number;
   reminded: boolean;
   authorId: string;
   authorName: string;
@@ -45,17 +46,17 @@ export type DocCategory = {
   id: string;
   familyId: string;
   name: string;
-  parentId?: string; // for subcategories
-  path: string; // relative path on Nextcloud
+  parentId?: string;
+  path: string;
   createdAt: number;
 };
 
 export type DocItem = {
   id: string;
   familyId: string;
-  categoryId: string;
+  categoryId: string | null;
   name: string;
-  path: string; // full path on Nextcloud
+  path: string;
   size?: number;
   mime?: string;
   uploadedBy: string;

@@ -1,0 +1,17 @@
+{
+  "name": "Family Fridge",
+  "short_name": "FamilyFridge",
+  "description": "Il frigorifero digitale della famiglia",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#FFFBF5",
+  "theme_color": "#F97316",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
