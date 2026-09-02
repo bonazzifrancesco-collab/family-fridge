@@ -4,31 +4,27 @@ import { createClient } from "webdav";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-async function compressImageIfNeeded(buffer: Buffer, mime: string): Promise<{ buffer: Buffer; mime: string }> {
-  // Solo immagini JPEG/PNG/WebP — compressione ad alta qualità (quasi lossless percepito)
+async function compressImageIfNeeded(
+  input: Buffer,
+  mime: string
+): Promise<{ data: Buffer; mime: string }> {
   if (!mime.startsWith("image/") || mime === "image/gif" || mime === "image/svg+xml") {
-    return { buffer, mime };
+    return { data: input, mime };
   }
 
   try {
-    // Usa sharp se disponibile; altrimenti ritorna originale
     const sharp = (await import("sharp")).default;
-    let pipeline = sharp(buffer).rotate(); // rispetta EXIF orientation
+    const pipeline = sharp(input).rotate();
 
     if (mime === "image/png") {
-      // PNG: compressione lossless
       const out = await pipeline.png({ compressionLevel: 8, palette: false }).toBuffer();
-      return { buffer: out, mime: "image/png" };
+      return { data: Buffer.from(out), mime: "image/png" };
     }
 
-    // JPEG / altro → JPEG qualità 92 (ottimo compromesso, quasi indistinguibile)
-    const out = await pipeline
-      .jpeg({ quality: 92, mozjpeg: true })
-      .toBuffer();
-    return { buffer: out, mime: "image/jpeg" };
+    const out = await pipeline.jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+    return { data: Buffer.from(out), mime: "image/jpeg" };
   } catch {
-    // sharp non installato o errore → file originale
-    return { buffer, mime };
+    return { data: input, mime };
   }
 }
 
@@ -56,24 +52,23 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuf = await file.arrayBuffer();
-    let buffer = Buffer.from(arrayBuf);
+    let data = Buffer.from(new Uint8Array(arrayBuf));
     let mime = file.type || "application/octet-stream";
 
-    // Compressione automatica immagini ad alta qualità
-    const compressed = await compressImageIfNeeded(buffer, mime);
-    buffer = compressed.buffer;
+    const compressed = await compressImageIfNeeded(data, mime);
+    data = compressed.data;
     mime = compressed.mime;
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._\- \u00C0-\u024F]/g, "_");
-    const remoteDir = categoryPath
-      ? `${basePath}/${familyId}/${categoryPath}`.
-          replace(/\/+/g, "/")
-      : `${basePath}/${familyId}`;
+    const remoteDir = (
+      categoryPath
+        ? `${basePath}/${familyId}/${categoryPath}`
+        : `${basePath}/${familyId}`
+    ).replace(/\/+/g, "/");
     const remotePath = `${remoteDir}/${safeName}`.replace(/\/+/g, "/");
 
     const client = createClient(url, { username, password });
 
-    // Crea cartelle se mancano
     try {
       const exists = await client.exists(remoteDir);
       if (!exists) {
@@ -83,16 +78,16 @@ export async function POST(req: NextRequest) {
       console.warn("createDirectory", e);
     }
 
-    await client.putFileContents(remotePath, buffer, {
+    await client.putFileContents(remotePath, data, {
       overwrite: true,
-      contentLength: buffer.length,
+      contentLength: data.length,
     });
 
     return NextResponse.json({
       ok: true,
       path: remotePath,
       name: safeName,
-      size: buffer.length,
+      size: data.length,
       originalSize: arrayBuf.byteLength,
       mime,
     });

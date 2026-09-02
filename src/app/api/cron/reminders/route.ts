@@ -7,8 +7,6 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  // Vercel Cron invia automaticamente Authorization: Bearer <CRON_SECRET> se impostato,
-  // oppure puoi chiamare manualmente con lo stesso header.
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -34,14 +32,11 @@ export async function GET(req: NextRequest) {
 
     const toRemind = snap.docs.filter((d) => {
       const data = d.data();
-      // Supporta sia remindDays (nuovo) sia vecchio remindBefore in minuti
-      let msBefore = 0;
+      let msBefore = 24 * 60 * 60 * 1000;
       if (typeof data.remindDays === "number") {
         msBefore = data.remindDays * 24 * 60 * 60 * 1000;
       } else if (typeof data.remindBefore === "number") {
         msBefore = data.remindBefore * 60 * 1000;
-      } else {
-        msBefore = 24 * 60 * 60 * 1000; // default 1 giorno
       }
       return data.dueDate - msBefore <= now;
     });
@@ -53,10 +48,7 @@ export async function GET(req: NextRequest) {
     if (gmailUser && gmailPass) {
       transporter = nodemailer.createTransport({
         service: "gmail",
-        auth: {
-          user: gmailUser,
-          pass: gmailPass,
-        },
+        auth: { user: gmailUser, pass: gmailPass },
       });
     }
 
@@ -70,16 +62,52 @@ export async function GET(req: NextRequest) {
         timeStyle: "short",
       });
 
-      if (transporter && gmailUser) {
-        try {
-          // Invia al creatore; in futuro si possono risolvere le email dei membri famiglia
-          const toEmail = gmailUser; // mittente = destinatario di default (la tua mail)
-          // Se vuoi inviare a un'altra mail, aggiungi REMINDER_TO in env
-          const recipient = process.env.REMINDER_TO || gmailUser;
+      // Raccogli email destinatari: autore + tutti i membri della famiglia
+      const recipients = new Set<string>();
 
+      // 1) email dell'autore della scadenza
+      if (data.authorId) {
+        try {
+          const userSnap = await adminDb.collection("users").doc(data.authorId).get();
+          const email = userSnap.data()?.email;
+          if (email) recipients.add(String(email).toLowerCase());
+        } catch (e) {
+          console.warn("author lookup", e);
+        }
+      }
+
+      // 2) tutti i membri della famiglia
+      if (data.familyId) {
+        try {
+          const famSnap = await adminDb.collection("families").doc(data.familyId).get();
+          const members: string[] = famSnap.data()?.members || [];
+          for (const uid of members) {
+            try {
+              const uSnap = await adminDb.collection("users").doc(uid).get();
+              const email = uSnap.data()?.email;
+              if (email) recipients.add(String(email).toLowerCase());
+            } catch {
+              /* skip */
+            }
+          }
+        } catch (e) {
+          console.warn("family lookup", e);
+        }
+      }
+
+      // Fallback: GMAIL_USER / REMINDER_TO se nessun membro ha email
+      if (recipients.size === 0) {
+        if (process.env.REMINDER_TO) recipients.add(process.env.REMINDER_TO.toLowerCase());
+        if (gmailUser) recipients.add(gmailUser.toLowerCase());
+      }
+
+      const toList = Array.from(recipients);
+
+      if (transporter && gmailUser && toList.length > 0) {
+        try {
           await transporter.sendMail({
             from: `"Family Fridge" <${gmailUser}>`,
-            to: recipient,
+            to: toList.join(", "),
             subject: `⏰ Promemoria: ${data.title}`,
             text: [
               `Ciao!`,
@@ -98,10 +126,10 @@ export async function GET(req: NextRequest) {
             html: `
               <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #FFFBF5; border-radius: 16px;">
                 <h2 style="color: #92400E; margin-top: 0;">⏰ Promemoria Family Fridge</h2>
-                <p style="font-size: 18px; color: #451A03;"><strong>${data.title}</strong></p>
-                ${data.description ? `<p style="color: #78350F;">${data.description}</p>` : ""}
-                <p style="color: #92400E;">📅 Scade il: <strong>${dueStr}</strong></p>
-                ${data.authorName ? `<p style="color: #A16207; font-size: 13px;">Creata da: ${data.authorName}</p>` : ""}
+                <p style="font-size: 18px; color: #451A03;"><strong>${escapeHtml(data.title)}</strong></p>
+                ${data.description ? `<p style="color: #78350F;">${escapeHtml(data.description)}</p>` : ""}
+                <p style="color: #92400E;">📅 Scade il: <strong>${escapeHtml(dueStr)}</strong></p>
+                ${data.authorName ? `<p style="color: #A16207; font-size: 13px;">Creata da: ${escapeHtml(data.authorName)}</p>` : ""}
                 <hr style="border: none; border-top: 1px solid #FED7AA; margin: 20px 0;" />
                 <p style="font-size: 12px; color: #A16207;">Family Fridge — il frigo digitale di famiglia</p>
               </div>
@@ -113,8 +141,8 @@ export async function GET(req: NextRequest) {
           console.error("Mail error", mailErr);
         }
       } else {
-        console.log(`[NO MAIL CONFIG] Reminder: ${data.title} due ${dueStr}`);
-        sent++; // marca comunque per non ritentare all'infinito in dev
+        console.log(`[NO MAIL] Reminder: ${data.title} → ${toList.join(", ")}`);
+        sent++;
       }
 
       await docSnap.ref.update({ reminded: true });
@@ -132,4 +160,12 @@ export async function GET(req: NextRequest) {
     console.error(e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
+}
+
+function escapeHtml(s: string) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
