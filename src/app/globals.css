@@ -7,19 +7,39 @@
   --foreground: #451A03;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* iPad vecchi: evita zoom automatico su input */
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Post-it realistic look */
+/* Touch target minimi per iPad / dita */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+input, select, textarea {
+  font-size: 16px !important; /* evita zoom su iOS vecchio */
+}
+
+/* Post-it */
 .postit {
   position: relative;
+  -webkit-transition: -webkit-transform 0.2s ease, box-shadow 0.2s ease;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.postit:hover {
+.postit:hover,
+.postit:active {
+  -webkit-transform: scale(1.03) rotate(0deg) !important;
   transform: scale(1.03) rotate(0deg) !important;
   z-index: 10;
   box-shadow: 4px 6px 16px rgba(0,0,0,0.2);
@@ -37,9 +57,14 @@ body {
   border-color: transparent rgba(0,0,0,0.08) transparent transparent;
 }
 
-/* Fridge door subtle texture */
 .fridge-bg {
-  background-image: 
-    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 40%),
+  background-color: #f1f5f9;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.5) 0%, transparent 40%),
     linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+/* Fallback per browser molto vecchi senza gap flex */
+.space-y-3 > * + * {
+  margin-top: 0.75rem;
 }

@@ -9,14 +9,6 @@ import { format, formatDistanceToNow } from "date-fns";
 import { it } from "date-fns/locale";
 import { Plus, Trash2, Bell, X } from "lucide-react";
 
-const remindOptions = [
-  { label: "1 ora prima", value: 60 },
-  { label: "3 ore prima", value: 180 },
-  { label: "1 giorno prima", value: 1440 },
-  { label: "2 giorni prima", value: 2880 },
-  { label: "1 settimana prima", value: 10080 },
-];
-
 export default function ScadenzePage() {
   const { user, profile } = useAuth();
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
@@ -24,14 +16,13 @@ export default function ScadenzePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [remindBefore, setRemindBefore] = useState(1440);
+  const [remindDays, setRemindDays] = useState("1");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!profile?.familyId) return;
 
-    // Solo where → niente indice composito richiesto
     const q = query(
       collection(db, "deadlines"),
       where("familyId", "==", profile.familyId)
@@ -48,7 +39,7 @@ export default function ScadenzePage() {
       },
       (err) => {
         console.error("Deadlines listener error:", err);
-        setError(`Errore lettura scadenze: ${err.message}`);
+        setError("Errore lettura scadenze: " + err.message);
       }
     );
     return () => unsub();
@@ -57,6 +48,11 @@ export default function ScadenzePage() {
   const addDeadline = async () => {
     if (!title.trim() || !dueDate || !profile?.familyId || !user) {
       setError("Compila titolo e data, oppure ricarica (manca famiglia).");
+      return;
+    }
+    const days = parseInt(remindDays, 10);
+    if (isNaN(days) || days < 0) {
+      setError("Inserisci un numero di giorni valido (0 o più).");
       return;
     }
     setBusy(true);
@@ -68,7 +64,7 @@ export default function ScadenzePage() {
         title: title.trim(),
         description: description.trim() || undefined,
         dueDate: due,
-        remindBefore,
+        remindDays: days,
         reminded: false,
         authorId: user.uid,
         authorName: profile.displayName || "Anonimo",
@@ -77,10 +73,11 @@ export default function ScadenzePage() {
       setTitle("");
       setDescription("");
       setDueDate("");
+      setRemindDays("1");
       setShowForm(false);
     } catch (err: any) {
       console.error("Add deadline error:", err);
-      setError(`Errore salvataggio: ${err.code || ""} ${err.message}`);
+      setError("Errore salvataggio: " + (err.code || "") + " " + err.message);
     } finally {
       setBusy(false);
     }
@@ -91,27 +88,28 @@ export default function ScadenzePage() {
       await deleteDoc(doc(db, "deadlines", id));
     } catch (err: any) {
       console.error("Delete deadline error:", err);
-      setError(`Errore cancellazione: ${err.message}`);
+      setError("Errore cancellazione: " + err.message);
     }
   };
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6" style={{ flexWrap: "wrap", gap: "12px" }}>
         <h1 className="text-3xl font-handwritten text-warm-wood">Scadenze</h1>
         <button
           onClick={() => {
             setError("");
             setShowForm(true);
           }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-warm-orange text-white shadow-md hover:bg-orange-600"
+          className="flex items-center gap-2 px-5 py-3 rounded-full bg-warm-orange text-white shadow-md"
+          style={{ minHeight: "44px" }}
         >
           <Plus className="w-5 h-5" /> Nuova scadenza
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm whitespace-pre-wrap">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
       )}
@@ -124,17 +122,20 @@ export default function ScadenzePage() {
         )}
         {deadlines.map((d) => {
           const isPast = d.dueDate < Date.now();
+          const days = d.remindDays != null ? d.remindDays : (d as any).remindBefore ? Math.round((d as any).remindBefore / 1440) : 1;
           return (
             <div
               key={d.id}
-              className={`bg-white rounded-2xl p-5 shadow-sm border flex items-start gap-4 ${
-                isPast ? "border-red-200 opacity-75" : "border-cream-200"
-              }`}
+              className={
+                "bg-white rounded-2xl p-5 shadow-sm border flex items-start " +
+                (isPast ? "border-red-200 opacity-75" : "border-cream-200")
+              }
+              style={{ gap: "16px" }}
             >
-              <div className="p-2 rounded-full bg-cream-100">
-                <Bell className={`w-5 h-5 ${isPast ? "text-red-500" : "text-warm-orange"}`} />
+              <div className="p-2 rounded-full bg-cream-100" style={{ flexShrink: 0 }}>
+                <Bell className={"w-5 h-5 " + (isPast ? "text-red-500" : "text-warm-orange")} />
               </div>
-              <div className="flex-1 min-w-0">
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <h3 className="font-medium text-amber-950">{d.title}</h3>
                 {d.description && (
                   <p className="text-sm text-amber-800/70 mt-0.5">{d.description}</p>
@@ -147,15 +148,13 @@ export default function ScadenzePage() {
                   </span>
                 </p>
                 <p className="text-xs text-amber-700/60 mt-1">
-                  Promemoria:{" "}
-                  {remindOptions.find((o) => o.value === d.remindBefore)?.label ||
-                    `${d.remindBefore} min`}{" "}
-                  · di {d.authorName}
+                  Promemoria: {days} {days === 1 ? "giorno" : "giorni"} prima · di {d.authorName}
                 </p>
               </div>
               <button
                 onClick={() => remove(d.id)}
-                className="p-2 rounded-full hover:bg-red-50 text-red-400 hover:text-red-600"
+                className="p-3 rounded-full hover:bg-red-50 text-red-400"
+                style={{ minWidth: "44px", minHeight: "44px" }}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -169,7 +168,8 @@ export default function ScadenzePage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
             <button
               onClick={() => setShowForm(false)}
-              className="absolute top-3 right-3 p-1 rounded-full hover:bg-cream-100"
+              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
+              style={{ minWidth: "44px", minHeight: "44px" }}
             >
               <X className="w-5 h-5" />
             </button>
@@ -183,36 +183,46 @@ export default function ScadenzePage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titolo"
-                className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none"
+                style={{ fontSize: "16px" }}
               />
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Descrizione (opzionale)"
                 rows={2}
-                className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange outline-none resize-none"
+                className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none resize-none"
+                style={{ fontSize: "16px" }}
               />
+              <label className="block text-sm text-amber-900">Data e ora scadenza</label>
               <input
                 type="datetime-local"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none"
+                style={{ fontSize: "16px" }}
               />
-              <select
-                value={remindBefore}
-                onChange={(e) => setRemindBefore(Number(e.target.value))}
-                className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange outline-none"
-              >
-                {remindOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm text-amber-900">
+                Promemoria email: quanti giorni prima?
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={remindDays}
+                onChange={(e) => setRemindDays(e.target.value)}
+                placeholder="Es. 3"
+                className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none"
+                style={{ fontSize: "16px" }}
+              />
+              <p className="text-xs text-amber-700/70">
+                Esempio: 3 = ricevi la mail 3 giorni prima della scadenza. 0 = il giorno stesso.
+              </p>
               <button
                 onClick={addDeadline}
                 disabled={!title.trim() || !dueDate || busy}
                 className="w-full py-3 rounded-xl bg-warm-orange text-white font-medium disabled:opacity-50"
+                style={{ minHeight: "48px", fontSize: "16px" }}
               >
                 {busy ? "Salvataggio..." : "Salva scadenza"}
               </button>
