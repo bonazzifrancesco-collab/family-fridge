@@ -15,7 +15,6 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
 import { DocCategory, DocItem } from "@/lib/types";
 import {
-  Plus,
   Folder,
   FolderPlus,
   Trash2,
@@ -95,15 +94,23 @@ export default function DocumentiPage() {
     setError("");
     try {
       const path = currentParent
-        ? `${categories.find((c) => c.id === currentParent)?.path || ""}/${newName.trim()}`
+        ? (categories.find((c) => c.id === currentParent)?.path || "") +
+          "/" +
+          newName.trim()
         : newName.trim();
-      await addDoc(collection(db, "categories"), {
+
+      // Firestore non accetta undefined: parentId solo se siamo in una sottocartella
+      const payload: Record<string, unknown> = {
         familyId: profile.familyId,
         name: newName.trim(),
-        parentId: currentParent || undefined,
         path,
         createdAt: Date.now(),
-      });
+      };
+      if (currentParent) {
+        payload.parentId = currentParent;
+      }
+
+      await addDoc(collection(db, "categories"), payload);
       setNewName("");
       setShowForm(false);
     } catch (err: any) {
@@ -123,7 +130,6 @@ export default function DocumentiPage() {
       });
       setEditCat(null);
       setNewName("");
-      // Aggiorna breadcrumb se aperto
       setBreadcrumbs((prev) =>
         prev.map((b) => (b.id === editCat.id ? { ...b, name: newName.trim() } : b))
       );
@@ -173,16 +179,19 @@ export default function DocumentiPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload fallito");
 
-      await addDoc(collection(db, "documents"), {
+      const docPayload: Record<string, unknown> = {
         familyId: profile.familyId,
-        categoryId: currentParent || null,
         name: data.name,
         path: data.path,
         size: data.size,
         mime: data.mime,
         uploadedBy: user.uid,
         createdAt: Date.now(),
-      });
+      };
+      // null è ok in Firestore; undefined no
+      docPayload.categoryId = currentParent ? currentParent : null;
+
+      await addDoc(collection(db, "documents"), docPayload);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -235,8 +244,10 @@ export default function DocumentiPage() {
         </div>
       )}
 
-      {/* Breadcrumbs */}
-      <div className="flex items-center text-sm text-amber-800 mb-4" style={{ flexWrap: "wrap", gap: "4px" }}>
+      <div
+        className="flex items-center text-sm text-amber-800 mb-4"
+        style={{ flexWrap: "wrap", gap: "4px" }}
+      >
         {breadcrumbs.map((bc, i) => (
           <span key={i} className="flex items-center">
             {i > 0 && <ChevronRight className="w-4 h-4 mx-1 opacity-50" />}
@@ -244,7 +255,9 @@ export default function DocumentiPage() {
               onClick={() => goToBreadcrumb(i)}
               className={
                 "px-2 py-1 rounded " +
-                (i === breadcrumbs.length - 1 ? "font-medium text-warm-wood" : "hover:underline")
+                (i === breadcrumbs.length - 1
+                  ? "font-medium text-warm-wood"
+                  : "hover:underline")
               }
               style={{ minHeight: "36px" }}
             >
@@ -254,7 +267,10 @@ export default function DocumentiPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-cream-200 shadow-sm p-4" style={{ minHeight: "40vh" }}>
+      <div
+        className="bg-white rounded-2xl border border-cream-200 shadow-sm p-4"
+        style={{ minHeight: "40vh" }}
+      >
         {visibleCats.length === 0 && visibleDocs.length === 0 ? (
           <p className="text-center text-amber-800/50 font-handwritten text-xl py-12">
             Vuoto. Crea una cartella o carica un file.
@@ -334,10 +350,9 @@ export default function DocumentiPage() {
 
       <p className="mt-4 text-xs text-amber-700/60">
         I file vengono salvati sul tuo NAS Nextcloud. Le immagini JPEG/PNG sono compresse in
-        automatico ad alta qualità (quasi senza perdita). PDF e altri formati restano invariati.
+        automatico ad alta qualità. PDF e altri formati restano invariati.
       </p>
 
-      {/* Modal crea */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
@@ -372,7 +387,6 @@ export default function DocumentiPage() {
         </div>
       )}
 
-      {/* Modal rinomina */}
       {editCat && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
