@@ -333,7 +333,6 @@ export default function DocumentiPage() {
         </div>
       )}
 
- co      {/* Breadcrumbs */}
       <div className="flex items-center flex-wrap gap-1 text-sm mb-4 px-1">
         {breadcrumbs.map((bc, i) => (
           <span key={i} className="flex items-center">
@@ -457,7 +456,7 @@ export default function DocumentiPage() {
             <button
               onClick={createCategory}
               disabled={!newName.trim() || busy}
-              className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
+              className="mt-4 w-full py-3.5 btn-primary disabled:disabled:opacity-50"
             >
               {busy ? "..." : "Crea"}
             </button>
