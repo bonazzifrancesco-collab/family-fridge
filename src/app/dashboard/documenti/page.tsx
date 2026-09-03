@@ -10,6 +10,7 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
@@ -24,6 +25,22 @@ import {
   Upload,
   FileText,
 } from "lucide-react";
+
+async function deleteOnNas(path: string) {
+  if (!path) return;
+  try {
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Errore cancellazione NAS");
+  } catch (e) {
+    console.error("NAS delete", e);
+    throw e;
+  }
+}
 
 export default function DocumentiPage() {
   const { user, profile } = useAuth();
@@ -99,7 +116,6 @@ export default function DocumentiPage() {
           newName.trim()
         : newName.trim();
 
-      // Firestore non accetta undefined: parentId solo se siamo in una sottocartella
       const payload: Record<string, unknown> = {
         familyId: profile.familyId,
         name: newName.trim(),
@@ -140,21 +156,121 @@ export default function DocumentiPage() {
     }
   };
 
+  /** Raccoglie tutti i discendenti (sottocategorie) di una categoria */
+  const collectDescendantIds = (rootId: string): string[] => {
+    const ids: string[] = [rootId];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const c of categories) {
+        if (c.parentId && ids.includes(c.parentId) && !ids.includes(c.id)) {
+          ids.push(c.id);
+          changed = true;
+        }
+      }
+    }
+    return ids;
+  };
+
   const removeCategory = async (id: string) => {
-    if (!confirm("Eliminare questa categoria? Le sottocategorie restano orfane.")) return;
+    if (
+      !confirm(
+        "Eliminare questa cartella, tutte le sottocartelle e i file (anche sul NAS)?"
+      )
+    )
+      return;
+
+    setBusy(true);
+    setError("");
     try {
-      await deleteDoc(doc(db, "categories", id));
-      if (currentParent === id) {
-        goToBreadcrumb(breadcrumbs.length - 2 >= 0 ? breadcrumbs.length - 2 : 0);
+      const cat = categories.find((c) => c.id === id);
+      const descendantIds = collectDescendantIds(id);
+
+      // 1) Cancella file collegati (Firestore + NAS)
+      const docsToRemove = docs.filter(
+        (d) => d.categoryId && descendantIds.includes(d.categoryId)
+      );
+      for (const d of docsToRemove) {
+        if (d.path) {
+          try {
+            await deleteOnNas(d.path);
+          } catch (e) {
+            console.warn("NAS file delete failed", d.path, e);
+          }
+        }
+        await deleteDoc(doc(db, "documents", d.id));
+      }
+
+      // 2) Cancella cartella sul NAS (path della categoria radice eliminata)
+      //    Costruisci path completo come in upload: BASE/familyId/categoryPath
+      if (cat && profile?.familyId) {
+        const base = process.env.NEXT_PUBLIC_NEXTCLOUD_HINT || "";
+        // path relativo categoria → il server delete usa path assoluto WebDAV salvato nei file;
+        // per la cartella usiamo lo stesso schema di upload
+        try {
+          // Prova a cancellare la directory sul NAS usando il path relativo + familyId
+          // L'API delete richiede path completo: lo ricostruiamo lato server meglio.
+          // Qui inviamo un path "logico" se i file hanno path completo sotto quella cartella.
+          if (docsToRemove.length > 0 && docsToRemove[0].path) {
+            // Risali alla directory della categoria dal path del primo file
+            const sample = docsToRemove[0].path;
+            const lastSlash = sample.lastIndexOf("/");
+            if (lastSlash > 0) {
+              const dirPath = sample.substring(0, lastSlash);
+              // Se siamo nella root della categoria eliminata, dirPath dovrebbe essere la cartella
+              await deleteOnNas(dirPath);
+            }
+          } else if (cat.path) {
+            // Nessun file: prova path standard
+            const guessed =
+              (process.env.NEXT_PUBLIC_NEXTCLOUD_BASE_HINT || "") +
+              "/" +
+              profile.familyId +
+              "/" +
+              cat.path;
+            // Meglio: endpoint che ricostruisce da familyId + relative path
+            await fetch("/api/delete-folder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                familyId: profile.familyId,
+                relativePath: cat.path,
+              }),
+            }).then(async (r) => {
+              if (!r.ok) {
+                const j = await r.json().catch(() => ({}));
+                console.warn("delete-folder", j);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn("NAS folder delete", e);
+        }
+      }
+
+      // 3) Cancella categorie da Firestore (figli prima, poi root)
+      for (const cid of descendantIds.reverse()) {
+        await deleteDoc(doc(db, "categories", cid));
+      }
+
+      if (currentParent === id || descendantIds.includes(currentParent || "")) {
+        goToBreadcrumb(0);
       }
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   };
 
   const removeDoc = async (id: string) => {
-    if (!confirm("Eliminare questo documento dalla lista? (il file sul NAS resta)")) return;
+    if (!confirm("Eliminare questo documento dall'app e dal NAS?")) return;
+    setError("");
     try {
+      const d = docs.find((x) => x.id === id);
+      if (d?.path) {
+        await deleteOnNas(d.path);
+      }
       await deleteDoc(doc(db, "documents", id));
     } catch (err: any) {
       setError(err.message);
@@ -188,7 +304,6 @@ export default function DocumentiPage() {
         uploadedBy: user.uid,
         createdAt: Date.now(),
       };
-      // null è ok in Firestore; undefined no
       docPayload.categoryId = currentParent ? currentParent : null;
 
       await addDoc(collection(db, "documents"), docPayload);
@@ -221,7 +336,7 @@ export default function DocumentiPage() {
           </button>
           <button
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || busy}
             className="flex items-center gap-2 px-4 py-3 rounded-full bg-warm-orange text-white shadow-md disabled:opacity-50"
             style={{ minHeight: "44px" }}
           >
@@ -310,6 +425,7 @@ export default function DocumentiPage() {
                   </button>
                   <button
                     onClick={() => removeCategory(cat.id)}
+                    disabled={busy}
                     className="p-2 rounded-full bg-white shadow text-red-400"
                     style={{ minWidth: "36px", minHeight: "36px" }}
                     title="Elimina"
@@ -349,8 +465,7 @@ export default function DocumentiPage() {
       </div>
 
       <p className="mt-4 text-xs text-amber-700/60">
-        I file vengono salvati sul tuo NAS Nextcloud. Le immagini JPEG/PNG sono compresse in
-        automatico ad alta qualità. PDF e altri formati restano invariati.
+        Cancellando file o cartelle vengono eliminati anche dal NAS Nextcloud.
       </p>
 
       {showForm && (
