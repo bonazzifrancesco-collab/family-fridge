@@ -30,7 +30,7 @@ async function notifyFamily(payload: {
 export default function ScadenzePage() {
   const { user, profile } = useAuth();
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-  const const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -95,7 +95,7 @@ export default function ScadenzePage() {
       await notifyFamily({
         familyId: profile.familyId,
         excludeUserId: user.uid,
-        title: "Nuova scadenza 📅",
+        title: "Nuova scadenza",
         body: title.trim(),
         url: "/dashboard/scadenze",
       });
