@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { DashboardNav } from "@/components/DashboardNav";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -12,16 +13,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!loading) {
       if (!user) router.replace("/login");
-      else if (!profile?.familyId) router.replace("/onboarding");
+      else if (!profile || !profile.familyId) router.replace("/onboarding");
     }
   }, [user, profile, loading, router]);
 
-  if (loading || !user || !profile?.familyId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-cream-50">
-        <div className="text-warm-wood text-xl font-handwritten">Caricamento frigo...</div>
-      </div>
-    );
+  if (loading || !user || !profile || !profile.familyId) {
+    return <LoadingScreen label="Caricamento frigo..." />;
   }
 
   return (
