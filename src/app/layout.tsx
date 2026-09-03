@@ -16,8 +16,11 @@ export const metadata: Metadata = {
     title: "Family Fridge",
   },
   icons: {
-    icon: "/favicon.svg",
-    apple: "/favicon.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/icon.svg" }],
   },
 };
 
@@ -37,9 +40,10 @@ export default function RootLayout({
   return (
     <html lang="it">
       <head>
-        <link rel="apple-touch-icon" href="/favicon.svg" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Family Fridge" />
       </head>
       <body className={`${inter.variable} ${caveat.variable} font-sans antialiased`}>
         <AuthProvider>{children}</AuthProvider>
