@@ -3,46 +3,75 @@
 @tailwind utilities;
 
 :root {
-  --background: #FFFBF5;
+  --background: #FFF8F0;
   --foreground: #451A03;
+  --orange: #F97316;
+  --amber: #F59E0B;
+  --wood: #92400E;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* iPad vecchi: evita zoom automatico su input */
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Touch target minimi per iPad / dita */
-button, a, [role="button"] {
-  min-height: 44px;
-  min-width: 44px;
+/* Mesh background */
+.bg-mesh {
+  background-color: #FFF8F0;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(251, 146, 60, 0.18), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(251, 191, 36, 0.15), transparent),
+    radial-gradient(ellipse 50% 30% at 50% 100%, rgba(254, 215, 170, 0.25), transparent);
 }
 
-input, select, textarea {
-  font-size: 16px !important; /* evita zoom su iOS vecchio */
+/* Glass card */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+/* Fridge surface */
+.fridge-bg {
+  background:
+    linear-gradient(160deg, #f8fafc 0%, #e8eef5 45%, #dde5ef 100%);
+  box-shadow:
+    inset 0 2px 12px rgba(255, 255, 255, 0.7),
+    inset 0 -8px 24px rgba(148, 163, 184, 0.15),
+    0 20px 50px -20px rgba(15, 23, 42, 0.18);
+  position: relative;
+}
+
+.fridge-bg::before {
+  content: "\n  position: absolute;
+  inset: 12px;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  pointer-events: none;
 }
 
 /* Post-it */
 .postit {
   position: relative;
-  -webkit-transition: -webkit-transform 0.2s ease, box-shadow 0.2s ease;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  cursor: default;
 }
 
 .postit:hover,
-.postit:active {
-  -webkit-transform: scale(1.03) rotate(0deg) !important;
-  transform: scale(1.03) rotate(0deg) !important;
-  z-index: 10;
-  box-shadow: 4px 6px 16px rgba(0,0,0,0.2);
+.postit:focus-within {
+  transform: scale(1.06) rotate(0deg) !important;
+  z-index: 20;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.18),
+    0 4px 8px rgba(0, 0, 0, 0.08);
 }
 
 .postit::after {
@@ -53,18 +82,84 @@ input, select, textarea {
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 0 18px 18px 0;
-  border-color: transparent rgba(0,0,0,0.08) transparent transparent;
+  border-width: 0 20px 20px 0;
+  border-color: transparent rgba(0, 0, 0, 0.07) transparent transparent;
+  border-bottom-left-radius: 2px;
 }
 
-.fridge-bg {
-  background-color: #f1f5f9;
-  background-image:
-    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.5) 0%, transparent 40%),
-    linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+/* Tape on post-it */
+.postit-tape {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  width: 48px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
 }
 
-/* Fallback per browser molto vecchi senza gap flex */
+/* Soft float animation */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float {
+  animation: floaty 5s ease-in-out infinite;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.55s ease-out both;
+}
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+  color: white;
+  font-weight: 600;
+  border-radius: 9999px;
+  box-shadow: 0 8px 20px -6px rgba(249, 115, 22, 0.55);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -6px rgba(249, 115, 22, 0.6);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Nav pill */
+.nav-pill-active {
+  background: linear-gradient(135deg, #F97316, #F59E0B);
+  color: white;
+  box-shadow: 0 6px 16px -4px rgba(249, 115, 22, 0.45);
+}
+
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+button, a, [role="button"] {
+  min-height: 44px;
+}
+
 .space-y-3 > * + * {
   margin-top: 0.75rem;
 }

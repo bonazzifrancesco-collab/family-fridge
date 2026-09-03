@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
 import { PostItNote } from "@/lib/types";
 import { randomRotation, randomPostItColor, cn } from "@/lib/utils";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Copy, Check } from "lucide-react";
 
 const colorClasses: Record<string, string> = {
   yellow: "bg-postit-yellow",
@@ -24,11 +24,11 @@ export default function FridgePage() {
   const [familyInvite, setFamilyInvite] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!profile?.familyId) return;
 
-    // Solo where → non richiede indice composito. Ordiniamo lato client.
     const q = query(
       collection(db, "notes"),
       where("familyId", "==", profile.familyId)
@@ -45,7 +45,7 @@ export default function FridgePage() {
       },
       (err) => {
         console.error("Notes listener error:", err);
-        setError(`Errore lettura note: ${err.message}`);
+        setError("Errore lettura note: " + err.message);
       }
     );
     return () => unsub();
@@ -85,7 +85,7 @@ export default function FridgePage() {
       setShowForm(false);
     } catch (err: any) {
       console.error("Add note error:", err);
-      setError(`Errore salvataggio: ${err.code || ""} ${err.message}`);
+      setError("Errore salvataggio: " + (err.code || "") + " " + err.message);
     } finally {
       setBusy(false);
     }
@@ -95,72 +95,98 @@ export default function FridgePage() {
     try {
       await deleteDoc(doc(db, "notes", id));
     } catch (err: any) {
-      console.error("Delete note error:", err);
-      setError(`Errore cancellazione: ${err.message}`);
+      setError("Errore cancellazione: " + err.message);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!familyInvite) return;
+    try {
+      await navigator.clipboard.writeText(familyInvite);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
     }
   };
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-handwritten text-warm-wood">Il Frigo</h1>
-          <p className="text-sm text-amber-800/70">
-            Codice invito famiglia:{" "}
-            <span className="font-mono font-bold tracking-widest">
+          <h1 className="text-3xl sm:text-4xl font-handwritten text-warm-wood">
+            Il Frigo
+          </h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-sm text-amber-800/70">Codice invito</span>
+            <button
+              onClick={copyCode}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-orange-100 text-sm font-mono font-bold tracking-widest text-warm-wood shadow-sm hover:border-orange-300 transition"
+            >
               {familyInvite || "…"}
-            </span>
-          </p>
-          {profile?.familyId && (
-            <p className="text-xs text-amber-700/50 mt-0.5">
-              familyId: {profile.familyId.slice(0, 8)}…
-            </p>
-          )}
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-green-600" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 opacity-50" />
+              )}
+            </button>
+          </div>
         </div>
         <button
           onClick={() => {
             setError("");
             setShowForm(true);
           }}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-warm-orange text-white shadow-md hover:bg-orange-600 transition"
+          className="btn-primary flex items-center gap-2 px-5 py-2.5"
         >
           <Plus className="w-5 h-5" /> Nuovo post-it
         </button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm whitespace-pre-wrap">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
       )}
 
-      <div className="fridge-bg rounded-3xl border-4 border-slate-200 shadow-inner min-h-[60vh] p-6 relative overflow-hidden">
+      <div className="fridge-bg rounded-[1.75rem] border border-slate-200/80 min-h-[58vh] p-5 sm:p-8 relative overflow-hidden">
+        {/* Magnet strip decoration */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-slate-300 via-slate-200 to-slate-300 opacity-60" />
+
         {notes.length === 0 && !error && (
-          <div className="absolute inset-0 flex items-center justify-center text-amber-800/40 font-handwritten text-2xl">
-            Nessun post-it ancora... aggiungine uno!
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
+            <div className="text-5xl mb-3 opacity-40">🧊</div>
+            <p className="font-handwritten text-2xl text-slate-400">
+              Nessun post-it... attaccane uno!
+            </p>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-6 content-start">
-          {notes.map((note) => (
+        <div className="relative flex flex-wrap gap-5 sm:gap-6 content-start pt-2">
+          {notes.map((note, i) => (
             <div
               key={note.id}
               className={cn(
-                "postit w-44 h-44 p-4 rounded-sm shadow-postit flex flex-col relative group",
+                "postit w-40 h-40 sm:w-44 sm:h-44 p-4 rounded-sm shadow-postit flex flex-col relative group",
                 colorClasses[note.color] || colorClasses.yellow
               )}
-              style={{ transform: `rotate(${note.rotation}deg)` }}
+              style={{
+                transform: `rotate(${note.rotation}deg)`,
+                animationDelay: `${i * 0.04}s`,
+              }}
             >
+              <span className="postit-tape" />
               <button
                 onClick={() => removeNote(note.id)}
-                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-1 rounded-full bg-black/10 hover:bg-black/20 transition"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-black/10 hover:bg-black/20 transition"
+                aria-label="Elimina"
               >
                 <Trash2 className="w-3.5 h-3.5 text-amber-900" />
               </button>
-              <p className="font-handwritten text-lg leading-snug flex-1 overflow-hidden text-amber-950">
+              <p className="font-handwritten text-lg leading-snug flex-1 overflow-hidden text-amber-950 pt-1">
                 {note.content}
               </p>
-              <p className="text-[10px] text-amber-900/60 mt-1 truncate">
+              <p className="text-[10px] text-amber-900/50 mt-1 truncate font-medium">
                 {note.authorName}
               </p>
             </div>
@@ -169,15 +195,16 @@ export default function FridgePage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative animate-fade-up border border-orange-100">
             <button
               onClick={() => setShowForm(false)}
-              className="absolute top-3 right-3 p-1 rounded-full hover:bg-cream-100"
+              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
             >
               <X className="w-5 h-5" />
             </button>
-            <h2 className="text-xl font-handwritten text-warm-wood mb-4">Nuovo post-it</h2>
+            <h2 className="text-2xl font-handwritten text-warm-wood mb-1">Nuovo post-it</h2>
+            <p className="text-sm text-amber-800/60 mb-4">Scrivi e attaccalo sul frigo</p>
             {error && (
               <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
             )}
@@ -185,16 +212,16 @@ export default function FridgePage() {
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
               rows={4}
-              className="w-full p-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange outline-none resize-none font-handwritten text-lg"
-              placeholder="Scrivi qui il tuo appunto..."
+              className="w-full p-4 rounded-2xl border border-orange-100 bg-cream-50 focus:ring-2 focus:ring-orange-300 outline-none resize-none font-handwritten text-lg"
+              placeholder="Es. Ricordati di..."
               autoFocus
             />
             <button
               onClick={addNote}
               disabled={!newContent.trim() || busy}
-              className="mt-4 w-full py-3 rounded-xl bg-warm-orange text-white font-medium disabled:opacity-50"
+              className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
             >
-              {busy ? "Salvataggio..." : "Attacca sul frigo"}
+              {busy ? "Salvataggio..." : "Attacca sul frigo 📎"}
             </button>
           </div>
         </div>
