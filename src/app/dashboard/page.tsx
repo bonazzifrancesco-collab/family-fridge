@@ -16,6 +16,24 @@ const colorClasses: Record<string, string> = {
   orange: "bg-postit-orange",
 };
 
+async function notifyFamily(payload: {
+  familyId: string;
+  excludeUserId?: string;
+  title: string;
+  body: string;
+  url: string;
+}) {
+  try {
+    await fetch("/api/push/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.warn("push notify", e);
+  }
+}
+
 export default function FridgePage() {
   const { user, profile } = useAuth();
   const [notes, setNotes] = useState<PostItNote[]>([]);
@@ -71,9 +89,10 @@ export default function FridgePage() {
     setBusy(true);
     setError("");
     try {
+      const content = newContent.trim();
       await addDoc(collection(db, "notes"), {
         familyId: profile.familyId,
-        content: newContent.trim(),
+        content,
         color: randomPostItColor(),
         authorId: user.uid,
         authorName: profile.displayName || user.displayName || "Anonimo",
@@ -81,6 +100,15 @@ export default function FridgePage() {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+
+      await notifyFamily({
+        familyId: profile.familyId,
+        excludeUserId: user.uid,
+        title: "Nuovo post-it 📝",
+        body: content.slice(0, 120),
+        url: "/dashboard",
+      });
+
       setNewContent("");
       setShowForm(false);
     } catch (err: any) {
@@ -143,14 +171,13 @@ export default function FridgePage() {
         </button>
       </div>
 
-      {error && (
+      {error && !showForm && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
       )}
 
       <div className="fridge-bg rounded-[1.75rem] border border-slate-200/80 min-h-[58vh] p-5 sm:p-8 relative overflow-hidden">
-        {/* Magnet strip decoration */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-slate-300 via-slate-200 to-slate-300 opacity-60" />
 
         {notes.length === 0 && !error && (
@@ -195,34 +222,43 @@ export default function FridgePage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative animate-fade-up border border-orange-100">
-            <button
-              onClick={() => setShowForm(false)}
-              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-2xl font-handwritten text-warm-wood mb-1">Nuovo post-it</h2>
-            <p className="text-sm text-amber-800/60 mb-4">Scrivi e attaccalo sul frigo</p>
-            {error && (
-              <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-            )}
-            <textarea
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              rows={4}
-              className="w-full p-4 rounded-2xl border border-orange-100 bg-cream-50 focus:ring-2 focus:ring-orange-300 outline-none resize-none font-handwritten text-lg"
-              placeholder="Es. Ricordati di..."
-              autoFocus
-            />
-            <button
-              onClick={addNote}
-              disabled={!newContent.trim() || busy}
-              className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
-            >
-              {busy ? "Salvataggio..." : "Attacca sul frigo 📎"}
-            </button>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto relative animate-fade-up border border-orange-100">
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-orange-50 px-5 pt-4 pb-3 flex items-center justify-between rounded-t-3xl">
+              <div>
+                <h2 className="text-2xl font-handwritten text-warm-wood leading-tight">
+                  Nuovo post-it
+                </h2>
+                <p className="text-sm text-amber-800/60">Scrivi e attaccalo sul frigo</p>
+              </div>
+              <button
+                onClick={() => setShowForm(false)}
+                className="p-2.5 rounded-full hover:bg-cream-100 flex-shrink-0"
+                aria-label="Chiudi"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 pt-4">
+              {error && (
+                <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+              )}
+              <textarea
+                value={newContent}
+                onChange={(e) => setNewContent(e.target.value)}
+                rows={4}
+                className="w-full p-4 rounded-2xl border border-orange-100 bg-cream-50 focus:ring-2 focus:ring-orange-300 outline-none resize-none font-handwritten text-lg"
+                placeholder="Es. Ricordati di..."
+                autoFocus
+              />
+              <button
+                onClick={addNote}
+                disabled={!newContent.trim() || busy}
+                className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
+              >
+                {busy ? "Salvataggio..." : "Attacca sul frigo 📎"}
+              </button>
+            </div>
           </div>
         </div>
       )}

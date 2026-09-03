@@ -9,6 +9,24 @@ import { format, formatDistanceToNow, isToday, isTomorrow } from "date-fns";
 import { it } from "date-fns/locale";
 import { Plus, Trash2, Bell, X, CalendarClock, AlertCircle } from "lucide-react";
 
+async function notifyFamily(payload: {
+  familyId: string;
+  excludeUserId?: string;
+  title: string;
+  body: string;
+  url: string;
+}) {
+  try {
+    await fetch("/api/push/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.warn("push notify", e);
+  }
+}
+
 export default function ScadenzePage() {
   const { user, profile } = useAuth();
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
@@ -73,6 +91,15 @@ export default function ScadenzePage() {
       if (desc) payload.description = desc;
 
       await addDoc(collection(db, "deadlines"), payload);
+
+      await notifyFamily({
+        familyId: profile.familyId,
+        excludeUserId: user.uid,
+        title: "Nuova scadenza 📅",
+        body: title.trim(),
+        url: "/dashboard/scadenze",
+      });
+
       setTitle("");
       setDescription("");
       setDueDate("");
@@ -102,7 +129,10 @@ export default function ScadenzePage() {
     if (due < Date.now()) return { label: "Scaduta", cls: "bg-red-100 text-red-700" };
     if (isToday(date)) return { label: "Oggi", cls: "bg-orange-100 text-orange-700" };
     if (isTomorrow(date)) return { label: "Domani", cls: "bg-amber-100 text-amber-800" };
-    return { label: formatDistanceToNow(due, { addSuffix: true, locale: it }), cls: "bg-cream-100 text-amber-800" };
+    return {
+      label: formatDistanceToNow(due, { addSuffix: true, locale: it }),
+      cls: "bg-cream-100 text-amber-800",
+    };
   };
 
   const Card = ({ d }: { d: Deadline }) => {
@@ -187,7 +217,7 @@ export default function ScadenzePage() {
         </button>
       </div>
 
-      {error && (
+      {error && !showForm && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
@@ -225,20 +255,27 @@ export default function ScadenzePage() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative animate-fade-up border border-orange-100">
-            <button
-              onClick={() => setShowForm(false)}
-              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-2xl font-handwritten text-warm-wood mb-1">Nuova scadenza</h2>
-            <p className="text-sm text-amber-800/60 mb-4">Con promemoria email alla famiglia</p>
-            {error && (
-              <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-            )}
-            <div className="space-y-3">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto relative animate-fade-up border border-orange-100">
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-orange-50 px-5 pt-4 pb-3 flex items-center justify-between rounded-t-3xl">
+              <div>
+                <h2 className="text-2xl font-handwritten text-warm-wood leading-tight">
+                  Nuova scadenza
+                </h2>
+                <p className="text-sm text-amber-800/60">Promemoria email + push</p>
+              </div>
+              <button
+                onClick={() => setShowForm(false)}
+                className="p-2.5 rounded-full hover:bg-cream-100 flex-shrink-0"
+                aria-label="Chiudi"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 pt-4 space-y-3">
+              {error && (
+                <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+              )}
               <input
                 type="text"
                 value={title}
@@ -274,7 +311,7 @@ export default function ScadenzePage() {
                 className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
               />
               <p className="text-xs text-amber-700/60">
-                3 = mail 3 giorni prima · 0 = il giorno stesso
+                3 = 3 giorni prima · 0 = il giorno stesso
               </p>
               <button
                 onClick={addDeadline}

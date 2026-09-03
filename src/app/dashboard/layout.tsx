@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { DashboardNav } from "@/components/DashboardNav";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { EnablePush } from "@/components/EnablePush";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -24,7 +25,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-mesh">
       <DashboardNav />
-      <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">{children}</main>
+      <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
+        <EnablePush />
+        {children}
+      </main>
     </div>
   );
 }
