@@ -30,7 +30,7 @@ async function notifyFamily(payload: {
 export default function ScadenzePage() {
   const { user, profile } = useAuth();
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-  const [showForm, setShowForm] = useState(false);
+  const const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -149,7 +149,7 @@ export default function ScadenzePage() {
       <div
         className={
           "group relative bg-white/90 rounded-2xl p-5 border shadow-sm transition hover:shadow-md " +
-          (isPast ? "border-red-100-100 opacity-80" : "border-orange-100")
+          (isPast ? "border-red-100 opacity-80" : "border-orange-100")
         }
       >
         <div className="flex items-start gap-4">
@@ -266,7 +266,6 @@ export default function ScadenzePage() {
             className="bg-white w-full sm:max-w-md sm:mx-4 flex flex-col rounded-t-3xl sm:rounded-3xl shadow-2xl border border-orange-100"
             style={{ maxHeight: "min(92dvh, 920px)" }}
           >
-            {/* Header FUORI dallo scroll: X sempre visibile */}
             <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-orange-50">
               <div className="min-w-0">
                 <h2 className="text-xl sm:text-2xl font-handwritten text-warm-wood leading-tight truncate">
@@ -284,7 +283,6 @@ export default function ScadenzePage() {
               </button>
             </div>
 
-            {/* Solo il corpo scrolla */}
             <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-3">
               {error && (
                 <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
