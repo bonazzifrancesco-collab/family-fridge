@@ -44,10 +44,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cream-50 to-warm-soft flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white/90 backdrop-blur rounded-3xl shadow-xl p-8 border border-cream-200">
-        <h1 className="text-3xl font-handwritten text-warm-wood text-center mb-2">Bentornato</h1>
-        <p className="text-center text-amber-800/70 mb-6">Accedi al tuo Family Fridge</p>
+    <div className="min-h-screen bg-mesh flex items-center justify-center p-4">
+      <div className="w-full max-w-md glass rounded-3xl shadow-xl p-8 border border-orange-100/60 animate-fade-up">
+        <div className="text-center mb-6">
+          <div className="text-3xl mb-2">🏠</div>
+          <h1 className="text-3xl font-handwritten text-warm-wood">Bentornato</h1>
+          <p className="text-amber-800/70 mt-1">Accedi al tuo Family Fridge</p>
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-sm">{error}</div>
@@ -61,7 +64,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange focus:border-transparent outline-none transition"
+              className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-white/80 focus:ring-2 focus:ring-orange-300 outline-none transition"
               placeholder="tua@email.com"
             />
           </div>
@@ -72,29 +75,25 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-xl border border-cream-300 focus:ring-2 focus:ring-warm-orange focus:border-transparent outline-none transition"
+              className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-white/80 focus:ring-2 focus:ring-orange-300 outline-none transition"
               placeholder="••••••••"
             />
           </div>
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full py-3 rounded-xl bg-warm-orange text-white font-medium shadow-md hover:bg-orange-600 disabled:opacity-50 transition"
-          >
+          <button type="submit" disabled={busy} className="w-full py-3 btn-primary disabled:opacity-50">
             {busy ? "Accesso..." : "Accedi"}
           </button>
         </form>
 
         <div className="my-6 flex items-center gap-3">
-          <div className="flex-1 h-px bg-cream-300" />
+          <div className="flex-1 h-px bg-orange-100" />
           <span className="text-sm text-amber-700">oppure</span>
-          <div className="flex-1 h-px bg-cream-300" />
+          <div className="flex-1 h-px bg-orange-100" />
         </div>
 
         <button
           onClick={handleGoogle}
           disabled={busy}
-          className="w-full py-3 rounded-xl bg-white border border-cream-300 text-amber-900 font-medium shadow-sm hover:bg-cream-50 disabled:opacity-50 transition flex items-center justify-center gap-2"
+          className="w-full py-3 rounded-full bg-white border border-orange-100 text-amber-900 font-medium shadow-sm hover:shadow-md disabled:opacity-50 transition flex items-center justify-center gap-2"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
