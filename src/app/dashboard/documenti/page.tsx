@@ -10,7 +10,6 @@ import {
   deleteDoc,
   doc,
   updateDoc,
-  getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
@@ -24,6 +23,8 @@ import {
   Pencil,
   Upload,
   FileText,
+  Image as ImageIcon,
+  File,
 } from "lucide-react";
 
 async function deleteOnNas(path: string) {
@@ -40,6 +41,12 @@ async function deleteOnNas(path: string) {
     console.error("NAS delete", e);
     throw e;
   }
+}
+
+function fileIcon(mime?: string) {
+  if (mime?.startsWith("image/")) return <ImageIcon className="w-9 h-9 text-violet-500" />;
+  if (mime === "application/pdf") return <FileText className="w-9 h-9 text-rose-500" />;
+  return <File className="w-9 h-9 text-sky-500" />;
 }
 
 export default function DocumentiPage() {
@@ -122,9 +129,7 @@ export default function DocumentiPage() {
         path,
         createdAt: Date.now(),
       };
-      if (currentParent) {
-        payload.parentId = currentParent;
-      }
+      if (currentParent) payload.parentId = currentParent;
 
       await addDoc(collection(db, "categories"), payload);
       setNewName("");
@@ -156,7 +161,6 @@ export default function DocumentiPage() {
     }
   };
 
-  /** Raccoglie tutti i discendenti (sottocategorie) di una categoria */
   const collectDescendantIds = (rootId: string): string[] => {
     const ids: string[] = [rootId];
     let changed = true;
@@ -186,7 +190,6 @@ export default function DocumentiPage() {
       const cat = categories.find((c) => c.id === id);
       const descendantIds = collectDescendantIds(id);
 
-      // 1) Cancella file collegati (Firestore + NAS)
       const docsToRemove = docs.filter(
         (d) => d.categoryId && descendantIds.includes(d.categoryId)
       );
@@ -201,34 +204,15 @@ export default function DocumentiPage() {
         await deleteDoc(doc(db, "documents", d.id));
       }
 
-      // 2) Cancella cartella sul NAS (path della categoria radice eliminata)
-      //    Costruisci path completo come in upload: BASE/familyId/categoryPath
       if (cat && profile?.familyId) {
-        const base = process.env.NEXT_PUBLIC_NEXTCLOUD_HINT || "";
-        // path relativo categoria → il server delete usa path assoluto WebDAV salvato nei file;
-        // per la cartella usiamo lo stesso schema di upload
         try {
-          // Prova a cancellare la directory sul NAS usando il path relativo + familyId
-          // L'API delete richiede path completo: lo ricostruiamo lato server meglio.
-          // Qui inviamo un path "logico" se i file hanno path completo sotto quella cartella.
           if (docsToRemove.length > 0 && docsToRemove[0].path) {
-            // Risali alla directory della categoria dal path del primo file
             const sample = docsToRemove[0].path;
             const lastSlash = sample.lastIndexOf("/");
             if (lastSlash > 0) {
-              const dirPath = sample.substring(0, lastSlash);
-              // Se siamo nella root della categoria eliminata, dirPath dovrebbe essere la cartella
-              await deleteOnNas(dirPath);
+              await deleteOnNas(sample.substring(0, lastSlash));
             }
           } else if (cat.path) {
-            // Nessun file: prova path standard
-            const guessed =
-              (process.env.NEXT_PUBLIC_NEXTCLOUD_BASE_HINT || "") +
-              "/" +
-              profile.familyId +
-              "/" +
-              cat.path;
-            // Meglio: endpoint che ricostruisce da familyId + relative path
             await fetch("/api/delete-folder", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -236,11 +220,6 @@ export default function DocumentiPage() {
                 familyId: profile.familyId,
                 relativePath: cat.path,
               }),
-            }).then(async (r) => {
-              if (!r.ok) {
-                const j = await r.json().catch(() => ({}));
-                console.warn("delete-folder", j);
-              }
             });
           }
         } catch (e) {
@@ -248,7 +227,6 @@ export default function DocumentiPage() {
         }
       }
 
-      // 3) Cancella categorie da Firestore (figli prima, poi root)
       for (const cid of descendantIds.reverse()) {
         await deleteDoc(doc(db, "categories", cid));
       }
@@ -268,9 +246,7 @@ export default function DocumentiPage() {
     setError("");
     try {
       const d = docs.find((x) => x.id === id);
-      if (d?.path) {
-        await deleteOnNas(d.path);
-      }
+      if (d?.path) await deleteOnNas(d.path);
       await deleteDoc(doc(db, "documents", id));
     } catch (err: any) {
       setError(err.message);
@@ -316,29 +292,27 @@ export default function DocumentiPage() {
   };
 
   return (
-    <div>
-      <div
-        className="flex items-center justify-between mb-6"
-        style={{ flexWrap: "wrap", gap: "12px" }}
-      >
-        <h1 className="text-3xl font-handwritten text-warm-wood">Documenti</h1>
-        <div className="flex" style={{ gap: "8px", flexWrap: "wrap" }}>
+    <div className="animate-fade-up">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-handwritten text-warm-wood">Documenti</h1>
+          <p className="text-sm text-amber-800/60 mt-0.5">Archivio famiglia sul NAS</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => {
               setEditCat(null);
               setNewName("");
               setShowForm(true);
             }}
-            className="flex items-center gap-2 px-4 py-3 rounded-full bg-white border border-cream-300 text-warm-wood shadow-sm"
-            style={{ minHeight: "44px" }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white border border-orange-100 text-warm-wood shadow-sm hover:shadow-md transition"
           >
             <FolderPlus className="w-5 h-5" /> Nuova cartella
           </button>
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading || busy}
-            className="flex items-center gap-2 px-4 py-3 rounded-full bg-warm-orange text-white shadow-md disabled:opacity-50"
-            style={{ minHeight: "44px" }}
+            className="btn-primary flex items-center gap-2 px-4 py-2.5 disabled:opacity-50"
           >
             <Upload className="w-5 h-5" />
             {uploading ? "Caricamento..." : "Carica file"}
@@ -359,22 +333,19 @@ export default function DocumentiPage() {
         </div>
       )}
 
-      <div
-        className="flex items-center text-sm text-amber-800 mb-4"
-        style={{ flexWrap: "wrap", gap: "4px" }}
-      >
+ co      {/* Breadcrumbs */}
+      <div className="flex items-center flex-wrap gap-1 text-sm mb-4 px-1">
         {breadcrumbs.map((bc, i) => (
           <span key={i} className="flex items-center">
-            {i > 0 && <ChevronRight className="w-4 h-4 mx-1 opacity-50" />}
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 mx-0.5 text-amber-600/40" />}
             <button
               onClick={() => goToBreadcrumb(i)}
               className={
-                "px-2 py-1 rounded " +
+                "px-2.5 py-1 rounded-lg transition " +
                 (i === breadcrumbs.length - 1
-                  ? "font-medium text-warm-wood"
-                  : "hover:underline")
+                  ? "font-semibold text-warm-wood bg-orange-50"
+                  : "text-amber-800/70 hover:bg-orange-50/60")
               }
-              style={{ minHeight: "36px" }}
             >
               {bc.name}
             </button>
@@ -382,33 +353,30 @@ export default function DocumentiPage() {
         ))}
       </div>
 
-      <div
-        className="bg-white rounded-2xl border border-cream-200 shadow-sm p-4"
-        style={{ minHeight: "40vh" }}
-      >
+      <div className="bg-white/80 rounded-3xl border border-orange-100 shadow-sm p-4 sm:p-5 min-h-[42vh]">
         {visibleCats.length === 0 && visibleDocs.length === 0 ? (
-          <p className="text-center text-amber-800/50 font-handwritten text-xl py-12">
-            Vuoto. Crea una cartella o carica un file.
-          </p>
+          <div className="text-center py-14">
+            <div className="text-5xl mb-3 opacity-40">📂</div>
+            <p className="font-handwritten text-2xl text-amber-800/40">
+              Vuoto. Crea una cartella o carica un file.
+            </p>
+          </div>
         ) : (
-          <div
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
-            style={{ gap: "16px" }}
-          >
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {visibleCats.map((cat) => (
               <div
                 key={cat.id}
-                className="group relative p-4 rounded-xl bg-cream-50 border border-cream-200 cursor-pointer flex flex-col items-center"
-                style={{ gap: "8px" }}
+                className="group relative p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-orange-100/80 cursor-pointer flex flex-col items-center gap-2 hover:shadow-md hover:border-orange-200 transition"
                 onClick={() => openCategory(cat)}
               >
-                <Folder className="w-10 h-10 text-warm-amber" />
-                <span className="text-sm font-medium text-amber-950 text-center truncate w-full">
+                <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center shadow-sm">
+                  <Folder className="w-8 h-8 text-warm-amber" />
+                </div>
+                <span className="text-sm font-semibold text-amber-950 text-center truncate w-full">
                   {cat.name}
                 </span>
                 <div
-                  className="absolute top-2 right-2 flex opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                  style={{ gap: "4px" }}
+                  className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
@@ -417,8 +385,7 @@ export default function DocumentiPage() {
                       setNewName(cat.name);
                       setShowForm(false);
                     }}
-                    className="p-2 rounded-full bg-white shadow text-amber-700"
-                    style={{ minWidth: "36px", minHeight: "36px" }}
+                    className="p-1.5 rounded-full bg-white shadow text-amber-700 hover:bg-amber-50"
                     title="Rinomina"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -426,8 +393,7 @@ export default function DocumentiPage() {
                   <button
                     onClick={() => removeCategory(cat.id)}
                     disabled={busy}
-                    className="p-2 rounded-full bg-white shadow text-red-400"
-                    style={{ minWidth: "36px", minHeight: "36px" }}
+                    className="p-1.5 rounded-full bg-white shadow text-red-400 hover:bg-red-50"
                     title="Elimina"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -439,22 +405,22 @@ export default function DocumentiPage() {
             {visibleDocs.map((d) => (
               <div
                 key={d.id}
-                className="group relative p-4 rounded-xl bg-white border border-cream-200 flex flex-col items-center"
-                style={{ gap: "8px" }}
+                className="group relative p-4 rounded-2xl bg-white border border-orange-100/80 flex flex-col items-center gap-2 hover:shadow-md transition"
               >
-                <FileText className="w-10 h-10 text-sky-600" />
+                <div className="w-14 h-14 rounded-2xl bg-cream-50 flex items-center justify-center">
+                  {fileIcon(d.mime)}
+                </div>
                 <span className="text-sm font-medium text-amber-950 text-center truncate w-full">
                   {d.name}
                 </span>
                 {d.size != null && (
-                  <span className="text-xs text-amber-700/60">
+                  <span className="text-[11px] text-amber-700/50 font-medium">
                     {(d.size / 1024).toFixed(0)} KB
                   </span>
                 )}
                 <button
                   onClick={() => removeDoc(d.id)}
-                  className="absolute top-2 right-2 p-2 rounded-full bg-white shadow text-red-400 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                  style={{ minWidth: "36px", minHeight: "36px" }}
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-white shadow text-red-400 hover:bg-red-50 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -464,21 +430,20 @@ export default function DocumentiPage() {
         )}
       </div>
 
-      <p className="mt-4 text-xs text-amber-700/60">
-        Cancellando file o cartelle vengono eliminati anche dal NAS Nextcloud.
+      <p className="mt-4 text-xs text-amber-700/50 px-1">
+        I file restano sul tuo NAS. Cancellandoli qui spariscono anche da Nextcloud.
       </p>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative animate-fade-up border border-orange-100">
             <button
               onClick={() => setShowForm(false)}
-              className="absolute top-3 right-3 p-2 rounded-full"
-              style={{ minWidth: "44px", minHeight: "44px" }}
+              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
             >
               <X className="w-5 h-5" />
             </button>
-            <h2 className="text-xl font-handwritten text-warm-wood mb-4">
+            <h2 className="text-2xl font-handwritten text-warm-wood mb-4">
               Nuova {currentParent ? "sottocategoria" : "categoria"}
             </h2>
             <input
@@ -486,15 +451,13 @@ export default function DocumentiPage() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Nome cartella"
-              className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none"
-              style={{ fontSize: "16px" }}
+              className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
               autoFocus
             />
             <button
               onClick={createCategory}
               disabled={!newName.trim() || busy}
-              className="mt-4 w-full py-3 rounded-xl bg-warm-orange text-white font-medium disabled:opacity-50"
-              style={{ minHeight: "48px" }}
+              className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
             >
               {busy ? "..." : "Crea"}
             </button>
@@ -503,29 +466,26 @@ export default function DocumentiPage() {
       )}
 
       {editCat && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative animate-fade-up border border-orange-100">
             <button
               onClick={() => setEditCat(null)}
-              className="absolute top-3 right-3 p-2 rounded-full"
-              style={{ minWidth: "44px", minHeight: "44px" }}
+              className="absolute top-3 right-3 p-2 rounded-full hover:bg-cream-100"
             >
               <X className="w-5 h-5" />
             </button>
-            <h2 className="text-xl font-handwritten text-warm-wood mb-4">Rinomina</h2>
+            <h2 className="text-2xl font-handwritten text-warm-wood mb-4">Rinomina</h2>
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-cream-300 outline-none"
-              style={{ fontSize: "16px" }}
+              className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
               autoFocus
             />
             <button
               onClick={saveEdit}
               disabled={!newName.trim() || busy}
-              className="mt-4 w-full py-3 rounded-xl bg-warm-orange text-white font-medium disabled:opacity-50"
-              style={{ minHeight: "48px" }}
+              className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
             >
               {busy ? "..." : "Salva"}
             </button>
