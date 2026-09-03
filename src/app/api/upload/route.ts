@@ -30,11 +30,23 @@ async function compressImageIfNeeded(
   }
 }
 
+function normalizePath(...parts: string[]) {
+  return (
+    "/" +
+    parts
+      .join("/")
+      .split("/")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join("/")
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;
-    const categoryPath = (form.get("path") as string) || "";
+    const categoryPath = ((form.get("path") as string) || "").trim();
     const familyId = form.get("familyId") as string;
 
     if (!file || !familyId) {
@@ -65,16 +77,16 @@ export async function POST(req: NextRequest) {
     mime = compressed.mime;
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._\- \u00C0-\u024F]/g, "_");
-    const remoteDir = (
-      categoryPath
-        ? basePath + "/" + familyId + "/" + categoryPath
-        : basePath + "/" + familyId
-    ).replace(/\/+/g, "/");
-    const remotePath = (remoteDir + "/" + safeName).replace(/\/+/g, "/");
+
+    // basePath / familyId / categoryPath (se presente)
+    const remoteDir = categoryPath
+      ? normalizePath(basePath, familyId, categoryPath)
+      : normalizePath(basePath, familyId);
+    const remotePath = normalizePath(remoteDir, safeName);
 
     const client = createClient(url, { username, password });
 
-    // Crea cartella base e intermedie
+    // Crea tutte le cartelle intermedie (anche sottocartelle annidate)
     const parts = remoteDir.split("/").filter(Boolean);
     let built = "";
     for (const part of parts) {
@@ -84,9 +96,23 @@ export async function POST(req: NextRequest) {
         if (!exists) {
           await client.createDirectory(built);
         }
-      } catch (e) {
-        console.warn("mkdir", built, e);
+      } catch (e: any) {
+        // Alcuni server rispondono 405 se esiste già: ignora
+        const msg = String(e?.message || e);
+        if (!/405|409|already|exist/i.test(msg)) {
+          console.warn("mkdir", built, msg);
+        }
       }
+    }
+
+    // Verifica che la cartella esista prima dell'upload
+    try {
+      const dirOk = await client.exists(remoteDir);
+      if (!dirOk) {
+        await client.createDirectory(remoteDir, { recursive: true } as any);
+      }
+    } catch (e) {
+      console.warn("ensure dir", remoteDir, e);
     }
 
     await client.putFileContents(remotePath, Buffer.from(payload), {
@@ -100,12 +126,12 @@ export async function POST(req: NextRequest) {
       size: payload.length,
       originalSize: arrayBuf.byteLength,
       mime,
+      remoteDir,
     });
   } catch (e: any) {
     console.error("Upload error", e);
     const message =
-      e?.message ||
-      (typeof e === "string" ? e : "Upload fallito");
+      e?.message || (typeof e === "string" ? e : "Upload fallito");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

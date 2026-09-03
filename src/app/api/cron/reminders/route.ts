@@ -57,15 +57,23 @@ export async function GET(req: NextRequest) {
 
     for (const docSnap of toRemind) {
       const data = docSnap.data();
-      const dueStr = new Date(data.dueDate).toLocaleString("it-IT", {
-        dateStyle: "full",
-        timeStyle: "short",
+      const dueDate = new Date(data.dueDate);
+      const dueStr = dueDate.toLocaleString("it-IT", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const dueShort = dueDate.toLocaleDateString("it-IT", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
       });
 
-      // Raccogli email destinatari: autore + tutti i membri della famiglia
       const recipients = new Set<string>();
 
-      // 1) email dell'autore della scadenza
       if (data.authorId) {
         try {
           const userSnap = await adminDb.collection("users").doc(data.authorId).get();
@@ -76,14 +84,13 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // 2) tutti i membri della famiglia
       if (data.familyId) {
         try {
           const famSnap = await adminDb.collection("families").doc(data.familyId).get();
           const members: string[] = famSnap.data()?.members || [];
-          for (const uid of members) {
+          for (const memberUid of members) {
             try {
-              const uSnap = await adminDb.collection("users").doc(uid).get();
+              const uSnap = await adminDb.collection("users").doc(memberUid).get();
               const email = uSnap.data()?.email;
               if (email) recipients.add(String(email).toLowerCase());
             } catch {
@@ -95,45 +102,45 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Fallback: GMAIL_USER / REMINDER_TO se nessun membro ha email
       if (recipients.size === 0) {
         if (process.env.REMINDER_TO) recipients.add(process.env.REMINDER_TO.toLowerCase());
         if (gmailUser) recipients.add(gmailUser.toLowerCase());
       }
 
       const toList = Array.from(recipients);
+      const title = escapeHtml(data.title || "Scadenza");
+      const description = data.description ? escapeHtml(data.description) : "";
+      const author = data.authorName ? escapeHtml(data.authorName) : "";
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
       if (transporter && gmailUser && toList.length > 0) {
         try {
           await transporter.sendMail({
-            from: `"Family Fridge" <${gmailUser}>`,
+            from: `"Family Fridge 🏠" <${gmailUser}>`,
             to: toList.join(", "),
             subject: `⏰ Promemoria: ${data.title}`,
             text: [
               `Ciao!`,
               ``,
-              `Ti ricordo la scadenza:`,
+              `Ti ricordo questa scadenza di famiglia:`,
               ``,
-              `📌 ${data.title}`,
+              `${data.title}`,
               data.description ? `Note: ${data.description}` : null,
-              `📅 Scade il: ${dueStr}`,
+              `Scade il: ${dueStr}`,
               data.authorName ? `Creata da: ${data.authorName}` : null,
               ``,
               `— Family Fridge`,
             ]
               .filter(Boolean)
               .join("\n"),
-            html: `
-              <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #FFFBF5; border-radius: 16px;">
-                <h2 style="color: #92400E; margin-top: 0;">⏰ Promemoria Family Fridge</h2>
-                <p style="font-size: 18px; color: #451A03;"><strong>${escapeHtml(data.title)}</strong></p>
-                ${data.description ? `<p style="color: #78350F;">${escapeHtml(data.description)}</p>` : ""}
-                <p style="color: #92400E;">📅 Scade il: <strong>${escapeHtml(dueStr)}</strong></p>
-                ${data.authorName ? `<p style="color: #A16207; font-size: 13px;">Creata da: ${escapeHtml(data.authorName)}</p>` : ""}
-                <hr style="border: none; border-top: 1px solid #FED7AA; margin: 20px 0;" />
-                <p style="font-size: 12px; color: #A16207;">Family Fridge — il frigo digitale di famiglia</p>
-              </div>
-            `,
+            html: buildEmailHtml({
+              title,
+              description,
+              dueStr: escapeHtml(dueStr),
+              dueShort: escapeHtml(dueShort),
+              author,
+              appUrl,
+            }),
           });
           sent++;
         } catch (mailErr: any) {
@@ -168,4 +175,67 @@ function escapeHtml(s: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function buildEmailHtml(opts: {
+  title: string;
+  description: string;
+  dueStr: string;
+  dueShort: string;
+  author: string;
+  appUrl: string;
+}) {
+  const { title, description, dueStr, dueShort, author, appUrl } = opts;
+  const cta = appUrl
+    ? `<a href="${appUrl}/dashboard/scadenze" style="display:inline-block;margin-top:8px;padding:14px 28px;background:#F97316;color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:15px;">Apri Family Fridge</a>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#FFF7ED;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FFF7ED;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 8px 30px rgba(146,64,14,0.12);">
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#F97316,#F59E0B);padding:28px 28px 22px;text-align:center;">
+            <div style="font-size:40px;line-height:1;">🏠</div>
+            <div style="color:#fff;font-size:22px;font-weight:700;margin-top:8px;letter-spacing:-0.02em;">Family Fridge</div>
+            <div style="color:rgba(255,255,255,0.9);font-size:13px;margin-top:4px;">Promemoria di famiglia</div>
+          </td>
+        </tr>
+        <!-- Post-it card -->
+        <tr>
+          <td style="padding:28px;">
+            <div style="background:#FEF08A;border-radius:4px;padding:22px 20px;box-shadow:3px 4px 12px rgba(0,0,0,0.08);transform:rotate(-0.5deg);">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#A16207;font-weight:600;margin-bottom:8px;">📌 Scadenza</div>
+              <div style="font-size:22px;font-weight:700;color:#451A03;line-height:1.3;margin-bottom:10px;">${title}</div>
+              ${description ? `<div style="font-size:15px;color:#78350F;line-height:1.45;margin-bottom:12px;">${description}</div>` : ""}
+              <div style="display:inline-block;background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;color:#92400E;font-weight:600;">
+                📅 ${dueShort}
+              </div>
+            </div>
+            <p style="margin:20px 0 0;font-size:15px;color:#78350F;line-height:1.5;">
+              Ti ricordiamo che questa scadenza è prevista per:<br>
+              <strong style="color:#451A03;">${dueStr}</strong>
+            </p>
+            ${author ? `<p style="margin:12px 0 0;font-size:13px;color:#A16207;">Creata da ${author}</p>` : ""}
+            <div style="text-align:center;margin-top:24px;">${cta}</div>
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background:#FFFBEB;padding:16px 28px;text-align:center;border-top:1px solid #FED7AA;">
+            <p style="margin:0;font-size:12px;color:#A16207;line-height:1.4;">
+              Inviato automaticamente da <strong>Family Fridge</strong><br>
+              Il frigorifero digitale della tua famiglia 🧡
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
