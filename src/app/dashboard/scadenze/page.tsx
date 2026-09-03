@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
@@ -37,6 +38,9 @@ export default function ScadenzePage() {
   const [remindDays, setRemindDays] = useState("1");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!profile?.familyId) return;
@@ -62,6 +66,16 @@ export default function ScadenzePage() {
     );
     return () => unsub();
   }, [profile?.familyId]);
+
+  // Blocca scroll body quando il modal è aperto
+  useEffect(() => {
+    if (!showForm) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showForm]);
 
   const addDeadline = async () => {
     if (!title.trim() || !dueDate || !profile?.familyId || !user) {
@@ -197,6 +211,103 @@ export default function ScadenzePage() {
     );
   };
 
+  const modal =
+    showForm && mounted
+      ? createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              zIndex: 99999,
+              background: "rgba(0,0,0,0.5)",
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowForm(false);
+            }}
+          >
+            <div
+              className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-orange-100 flex flex-col"
+              style={{ maxHeight: "85dvh" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-orange-50">
+                <div className="min-w-0">
+                  <h2 className="text-xl sm:text-2xl font-handwritten text-warm-wood leading-tight">
+                    Nuova scadenza
+                  </h2>
+                  <p className="text-xs sm:text-sm text-amber-800/60">
+                    Promemoria email + push
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-cream-100 text-warm-wood"
+                  aria-label="Chiudi"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div
+                className="flex-1 px-5 py-4 space-y-3"
+                style={{ overflowY: "auto", WebkitOverflowScrolling: "touch" }}
+              >
+                {error && (
+                  <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+                )}
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Titolo"
+                  className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
+                />
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Descrizione (opzionale)"
+                  rows={2}
+                  className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none resize-none focus:ring-2 focus:ring-orange-300"
+                />
+                <label className="block text-sm font-medium text-amber-900">Data e ora</label>
+                <input
+                  type="datetime-local"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
+                />
+                <label className="block text-sm font-medium text-amber-900">
+                  Promemoria: giorni prima
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={remindDays}
+                  onChange={(e) => setRemindDays(e.target.value)}
+                  placeholder="Es. 3"
+                  className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
+                />
+                <p className="text-xs text-amber-700/60">
+                  3 = 3 giorni prima · 0 = il giorno stesso
+                </p>
+                <button
+                  type="button"
+                  onClick={addDeadline}
+                  disabled={!title.trim() || !dueDate || busy}
+                  className="w-full py-3.5 btn-primary disabled:opacity-50"
+                >
+                  {busy ? "Salvataggio..." : "Salva scadenza"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
     <div className="animate-fade-up">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -254,87 +365,7 @@ export default function ScadenzePage() {
         </div>
       )}
 
-      {showForm && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.45)" }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowForm(false);
-          }}
-        >
-          <div
-            className="bg-white w-full sm:max-w-md sm:mx-4 flex flex-col rounded-t-3xl sm:rounded-3xl shadow-2xl border border-orange-100"
-            style={{ maxHeight: "min(92dvh, 920px)" }}
-          >
-            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-orange-50">
-              <div className="min-w-0">
-                <h2 className="text-xl sm:text-2xl font-handwritten text-warm-wood leading-tight truncate">
-                  Nuova scadenza
-                </h2>
-                <p className="text-xs sm:text-sm text-amber-800/60">Promemoria email + push</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-cream-100 hover:bg-cream-200 text-warm-wood"
-                aria-label="Chiudi"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-3">
-              {error && (
-                <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-              )}
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Titolo"
-                className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
-              />
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Descrizione (opzionale)"
-                rows={2}
-                className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none resize-none focus:ring-2 focus:ring-orange-300"
-              />
-              <label className="block text-sm font-medium text-amber-900">Data e ora</label>
-              <input
-                type="datetime-local"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
-              />
-              <label className="block text-sm font-medium text-amber-900">
-                Promemoria: giorni prima
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={remindDays}
-                onChange={(e) => setRemindDays(e.target.value)}
-                placeholder="Es. 3"
-                className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
-              />
-              <p className="text-xs text-amber-700/60">
-                3 = 3 giorni prima · 0 = il giorno stesso
-              </p>
-              <button
-                type="button"
-                onClick={addDeadline}
-                disabled={!title.trim() || !dueDate || busy}
-                className="w-full py-3.5 btn-primary disabled:opacity-50 mb-2"
-              >
-                {busy ? "Salvataggio..." : "Salva scadenza"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {modal}
     </div>
   );
 }
