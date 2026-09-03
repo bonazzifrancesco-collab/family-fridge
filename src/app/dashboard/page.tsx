@@ -222,24 +222,35 @@ export default function FridgePage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto relative animate-fade-up border border-orange-100">
-            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-orange-50 px-5 pt-4 pb-3 flex items-center justify-between rounded-t-3xl">
-              <div>
-                <h2 className="text-2xl font-handwritten text-warm-wood leading-tight">
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:mx-4 flex flex-col rounded-t-3xl sm:rounded-3xl shadow-2xl border border-orange-100"
+            style={{ maxHeight: "min(92dvh, 920px)" }}
+          >
+            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-orange-50">
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-handwritten text-warm-wood leading-tight">
                   Nuovo post-it
                 </h2>
-                <p className="text-sm text-amber-800/60">Scrivi e attaccalo sul frigo</p>
+                <p className="text-xs sm:text-sm text-amber-800/60">Scrivi e attaccalo sul frigo</p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowForm(false)}
-                className="p-2.5 rounded-full hover:bg-cream-100 flex-shrink-0"
+                className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-cream-100 hover:bg-cream-200 text-warm-wood"
                 aria-label="Chiudi"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 pt-4">
+
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">
               {error && (
                 <div className="mb-3 p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
               )}
@@ -249,12 +260,12 @@ export default function FridgePage() {
                 rows={4}
                 className="w-full p-4 rounded-2xl border border-orange-100 bg-cream-50 focus:ring-2 focus:ring-orange-300 outline-none resize-none font-handwritten text-lg"
                 placeholder="Es. Ricordati di..."
-                autoFocus
               />
               <button
+                type="button"
                 onClick={addNote}
                 disabled={!newContent.trim() || busy}
-                className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50"
+                className="mt-4 w-full py-3.5 btn-primary disabled:opacity-50 mb-2"
               >
                 {busy ? "Salvataggio..." : "Attacca sul frigo 📎"}
               </button>

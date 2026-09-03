@@ -149,7 +149,7 @@ export default function ScadenzePage() {
       <div
         className={
           "group relative bg-white/90 rounded-2xl p-5 border shadow-sm transition hover:shadow-md " +
-          (isPast ? "border-red-100 opacity-80" : "border-orange-100")
+          (isPast ? "border-red-100-100 opacity-80" : "border-orange-100")
         }
       >
         <div className="flex items-start gap-4">
@@ -255,24 +255,37 @@ export default function ScadenzePage() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto relative animate-fade-up border border-orange-100">
-            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-orange-50 px-5 pt-4 pb-3 flex items-center justify-between rounded-t-3xl">
-              <div>
-                <h2 className="text-2xl font-handwritten text-warm-wood leading-tight">
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowForm(false);
+          }}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:mx-4 flex flex-col rounded-t-3xl sm:rounded-3xl shadow-2xl border border-orange-100"
+            style={{ maxHeight: "min(92dvh, 920px)" }}
+          >
+            {/* Header FUORI dallo scroll: X sempre visibile */}
+            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-orange-50">
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-handwritten text-warm-wood leading-tight truncate">
                   Nuova scadenza
                 </h2>
-                <p className="text-sm text-amber-800/60">Promemoria email + push</p>
+                <p className="text-xs sm:text-sm text-amber-800/60">Promemoria email + push</p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowForm(false)}
-                className="p-2.5 rounded-full hover:bg-cream-100 flex-shrink-0"
+                className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-full bg-cream-100 hover:bg-cream-200 text-warm-wood"
                 aria-label="Chiudi"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 pt-4 space-y-3">
+
+            {/* Solo il corpo scrolla */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-3">
               {error && (
                 <div className="p-2 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
               )}
@@ -282,7 +295,6 @@ export default function ScadenzePage() {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titolo"
                 className="w-full px-4 py-3 rounded-xl border border-orange-100 bg-cream-50 outline-none focus:ring-2 focus:ring-orange-300"
-                autoFocus
               />
               <textarea
                 value={description}
@@ -314,9 +326,10 @@ export default function ScadenzePage() {
                 3 = 3 giorni prima · 0 = il giorno stesso
               </p>
               <button
+                type="button"
                 onClick={addDeadline}
                 disabled={!title.trim() || !dueDate || busy}
-                className="w-full py-3.5 btn-primary disabled:opacity-50"
+                className="w-full py-3.5 btn-primary disabled:opacity-50 mb-2"
               >
                 {busy ? "Salvataggio..." : "Salva scadenza"}
               </button>
