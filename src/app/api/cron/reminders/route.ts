@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import nodemailer from "nodemailer";
+import webpush from "web-push";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -52,7 +53,16 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY;
+    const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+    const vapidSubject = process.env.VAPID_SUBJECT || "mailto:admin@family-fridge.app";
+    const pushReady = !!(vapidPublic && vapidPrivate);
+    if (pushReady) {
+      webpush.setVapidDetails(vapidSubject, vapidPublic!, vapidPrivate!);
+    }
+
     let sent = 0;
+    let pushSent = 0;
     const errors: string[] = [];
 
     for (const docSnap of toRemind) {
@@ -73,8 +83,10 @@ export async function GET(req: NextRequest) {
       });
 
       const recipients = new Set<string>();
+      const memberIds: string[] = [];
 
       if (data.authorId) {
+        memberIds.push(data.authorId);
         try {
           const userSnap = await adminDb.collection("users").doc(data.authorId).get();
           const email = userSnap.data()?.email;
@@ -89,6 +101,7 @@ export async function GET(req: NextRequest) {
           const famSnap = await adminDb.collection("families").doc(data.familyId).get();
           const members: string[] = famSnap.data()?.members || [];
           for (const memberUid of members) {
+            if (!memberIds.includes(memberUid)) memberIds.push(memberUid);
             try {
               const uSnap = await adminDb.collection("users").doc(memberUid).get();
               const email = uSnap.data()?.email;
@@ -152,6 +165,33 @@ export async function GET(req: NextRequest) {
         sent++;
       }
 
+      // Push notifications
+      if (pushReady && memberIds.length > 0) {
+        try {
+          const subs = await adminDb.collection("pushSubscriptions").get();
+          const payload = JSON.stringify({
+            title: `⏰ Promemoria: ${data.title}`,
+            body: `Scade il ${dueShort}`,
+            url: "/dashboard/scadenze",
+          });
+          for (const s of subs.docs) {
+            const sd = s.data();
+            if (!memberIds.includes(sd.userId)) continue;
+            if (!sd.subscription?.endpoint) continue;
+            try {
+              await webpush.sendNotification(sd.subscription, payload);
+              pushSent++;
+            } catch (pe: any) {
+              if (pe.statusCode === 404 || pe.statusCode === 410) {
+                await s.ref.delete().catch(() => {});
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("push cron", e);
+        }
+      }
+
       await docSnap.ref.update({ reminded: true });
     }
 
@@ -160,7 +200,9 @@ export async function GET(req: NextRequest) {
       checked: snap.size,
       toRemind: toRemind.length,
       sent,
+      pushSent,
       mailConfigured: !!(gmailUser && gmailPass),
+      pushConfigured: pushReady,
       errors: errors.length ? errors : undefined,
     });
   } catch (e: any) {
@@ -197,24 +239,20 @@ function buildEmailHtml(opts: {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FFF7ED;padding:32px 16px;">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 8px 30px rgba(146,64,14,0.12);">
-        <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#F97316,#F59E0B);padding:28px 28px 22px;text-align:center;">
             <div style="font-size:40px;line-height:1;">🏠</div>
-            <div style="color:#fff;font-size:22px;font-weight:700;margin-top:8px;letter-spacing:-0.02em;">Family Fridge</div>
+            <div style="color:#fff;font-size:22px;font-weight:700;margin-top:8px;">Family Fridge</div>
             <div style="color:rgba(255,255,255,0.9);font-size:13px;margin-top:4px;">Promemoria di famiglia</div>
           </td>
         </tr>
-        <!-- Post-it card -->
         <tr>
           <td style="padding:28px;">
-            <div style="background:#FEF08A;border-radius:4px;padding:22px 20px;box-shadow:3px 4px 12px rgba(0,0,0,0.08);transform:rotate(-0.5deg);">
+            <div style="background:#FEF08A;border-radius:4px;padding:22px 20px;box-shadow:3px 4px 12px rgba(0,0,0,0.08);">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#A16207;font-weight:600;margin-bottom:8px;">📌 Scadenza</div>
               <div style="font-size:22px;font-weight:700;color:#451A03;line-height:1.3;margin-bottom:10px;">${title}</div>
               ${description ? `<div style="font-size:15px;color:#78350F;line-height:1.45;margin-bottom:12px;">${description}</div>` : ""}
-              <div style="display:inline-block;background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;color:#92400E;font-weight:600;">
-                📅 ${dueShort}
-              </div>
+              <div style="display:inline-block;background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;color:#92400E;font-weight:600;">📅 ${dueShort}</div>
             </div>
             <p style="margin:20px 0 0;font-size:15px;color:#78350F;line-height:1.5;">
               Ti ricordiamo che questa scadenza è prevista per:<br>
@@ -224,13 +262,9 @@ function buildEmailHtml(opts: {
             <div style="text-align:center;margin-top:24px;">${cta}</div>
           </td>
         </tr>
-        <!-- Footer -->
         <tr>
           <td style="background:#FFFBEB;padding:16px 28px;text-align:center;border-top:1px solid #FED7AA;">
-            <p style="margin:0;font-size:12px;color:#A16207;line-height:1.4;">
-              Inviato automaticamente da <strong>Family Fridge</strong><br>
-              Il frigorifero digitale della tua famiglia 🧡
-            </p>
+            <p style="margin:0;font-size:12px;color:#A16207;">Inviato automaticamente da <strong>Family Fridge</strong></p>
           </td>
         </tr>
       </table>
