@@ -18,19 +18,31 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Famiglia: membri possono leggere; create autenticati; update solo membri
+    // Famiglia
+    // - lettura: utenti autenticati (serve per cercare il codice invito)
+    // - create: solo il creatore, che deve essere tra i members
+    // - update: membri esistenti, OPPURE join (aggiungere se stessi a members)
     match /families/{familyId} {
-      allow read: if signedIn() &&
-        (uid() in resource.data.members || uid() == resource.data.createdBy);
+      allow read: if signedIn();
+
       allow create: if signedIn()
         && request.resource.data.createdBy == uid()
         && uid() in request.resource.data.members;
-      allow update: if signedIn() && uid() in resource.data.members;
+
+      allow update: if signedIn() && (
+        // membro già presente: può aggiornare
+        uid() in resource.data.members
+        ||
+        // join: può solo modificare "members" e deve includere se stesso
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && uid() in request.resource.data.members
+        )
+      );
+
       allow delete: if signedIn() && uid() == resource.data.createdBy;
     }
 
-    // Note (post-it): chiunque autenticato della stessa familyId (controllo soft lato client;
-    // in produzione si può stringere leggendo la family)
     match /notes/{noteId} {
       allow read: if signedIn();
       allow create: if signedIn()
@@ -64,6 +76,12 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['familyId', 'name', 'path', 'createdAt']);
       allow update: if signedIn();
       allow delete: if signedIn();
+    }
+
+    // Subscription push (scritte via Admin SDK lato server; lettura solo propria)
+    match /pushSubscriptions/{id} {
+      allow read: if signedIn() && resource.data.userId == uid();
+      allow write: if false;
     }
   }
 }
